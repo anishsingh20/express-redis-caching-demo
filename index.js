@@ -1,27 +1,11 @@
 const express = require('express');
-const Redis = require('ioredis');
+const createRedisClient = require('./redisClient');
 const { getDataById, addData } = require('./database');
 
 const app = express();
-const redis = new Redis({
-  host: 'db-redis-blr1-55103-do-user-13729304-0.c.db.ondigitalocean.com',
-  port: 25061,
-  password: 'AVNS_3Sj9qjkIRWdTG_4UIph',
-  maxRetriesPerRequest: 5, // Adjust this as needed
-  retryStrategy: (times) => {
-    const delay = Math.min(times * 50, 2000);
-    return delay;
-  },
-});
+app.use(express.json());
 
-// Event listeners for Redis
-redis.on('connect', () => {
-  console.log('Connected to Redis');
-});
-
-redis.on('error', (err) => {
-  console.error('Redis error:', err);
-});
+const redis = createRedisClient();
 
 // Function to get data without caching
 async function getDataNoCache(id) {
@@ -35,7 +19,13 @@ async function getDataNoCache(id) {
 // Function to get data with Redis caching
 async function getDataRedis(id) {
   const cacheKey = `data:${id}`;
-  let data = await redis.get(cacheKey);
+  let data;
+
+  try {
+    data = await redis.get(cacheKey);
+  } catch (err) {
+    console.error('Redis get error:', err);
+  }
 
   if (!data) {
     console.log('Redis Cache miss - fetching from database');
@@ -43,8 +33,11 @@ async function getDataRedis(id) {
     if (!data) {
       throw new Error('Data not found');
     }
-    // Store data in Redis with an expiration time of 1 hour (3600 seconds)
-    await redis.set(cacheKey, data, 'EX', 3600);
+    try {
+      await redis.set(cacheKey, data, 'EX', 3600); // Cache for 1 hour
+    } catch (err) {
+      console.error('Redis set error:', err);
+    }
   } else {
     console.log('Redis Cache hit');
   }
