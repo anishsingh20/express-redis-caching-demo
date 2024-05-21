@@ -4,10 +4,24 @@ const { getDataById } = require('./database');
 
 const app = express();
 const redis = new Redis({
-    host: 'db-redis-blr1-55103-do-user-13729304-0.c.db.ondigitalocean.com',
-    port: 25061,
-    password: 'AVNS_3Sj9qjkIRWdTG_4UIph'
-  });
+  host: 'db-redis-blr1-55103-do-user-13729304-0.c.db.ondigitalocean.com',
+  port: 25061,
+  password: 'AVNS_3Sj9qjkIRWdTG_4UIph',
+  maxRetriesPerRequest: 5, // Adjust this as needed
+  retryStrategy: (times) => {
+    const delay = Math.min(times * 50, 2000);
+    return delay;
+  },
+});
+
+// Event listeners for Redis
+redis.on('connect', () => {
+  console.log('Connected to Redis');
+});
+
+redis.on('error', (err) => {
+  console.error('Redis error:', err);
+});
 
 // Function to get data without caching
 async function getDataNoCache(id) {
@@ -29,7 +43,8 @@ async function getDataRedis(id) {
     if (!data) {
       throw new Error('Data not found');
     }
-    await redis.set(cacheKey, data, 'EX', 3600); // Cache for 1 hour
+    // Store data in Redis with an expiration time of 1 hour (3600 seconds)
+    await redis.set(cacheKey, data, 'EX', 3600);
   } else {
     console.log('Redis Cache hit');
   }
@@ -55,7 +70,7 @@ app.get('/data/redis/:id', async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8888;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
