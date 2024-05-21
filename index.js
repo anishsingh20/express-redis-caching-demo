@@ -4,10 +4,10 @@ const { getDataById } = require('./database');
 
 const app = express();
 const redis = new Redis({
-  host: process.env.REDIS_HOST || 'localhost',
-  port: process.env.REDIS_PORT || 6379,
-  password: process.env.REDIS_PASSWORD || ''
-});
+    host: 'db-redis-nyc3-57525-do-user-13729304-0.c.db.ondigitalocean.com',
+    port: 25061,
+    password: 'AVNS_QQwAbh--7BhPH7wwx9N'
+  });
 
 // Function to get data without caching
 async function getDataNoCache(id) {
