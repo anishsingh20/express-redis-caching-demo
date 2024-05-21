@@ -1,92 +1,58 @@
 const express = require('express');
-const Redis = require('ioredis');
-const { getDataById, addData } = require('./database');
+const redis = require('redis');
+const axios = require('axios');
+require('dotenv').config();
 
 const app = express();
-const redis = new Redis({
-  host: 'db-redis-blr1-55103-do-user-13729304-0.c.db.ondigitalocean.com',
-  port: 25061,
-  password: 'AVNS_3Sj9qjkIRWdTG_4UIph',
-  maxRetriesPerRequest: 5, // Adjust this as needed
-  retryStrategy: (times) => {
-    const delay = Math.min(times * 50, 2000);
-    return delay;
-  },
+const port = 3000;
+
+// Configure Redis client
+const redisClient = redis.createClient({
+    host: 'db-redis-blr1-55103-do-user-13729304-0.c.db.ondigitalocean.com',
+    port: 25061,
+    password: 'AVNS_3Sj9qjkIRWdTG_4UIph'
 });
 
-// Event listeners for Redis
-redis.on('connect', () => {
-  console.log('Connected to Redis');
+redisClient.on('connect', () => {
+    console.log('Connected to Redis...');
 });
 
-redis.on('error', (err) => {
-  console.error('Redis error:', err);
+redisClient.on('error', (err) => {
+    console.error(`Redis error: ${err}`);
 });
 
-// Function to get data without caching
-async function getDataNoCache(id) {
-  const data = await getDataById(id);
-  if (!data) {
-    throw new Error('Data not found');
-  }
-  return data;
+// Middleware to check cache
+function checkCache(req, res, next) {
+    const { username } = req.params;
+
+    redisClient.get(username, (err, data) => {
+        if (err) throw err;
+
+        if (data !== null) {
+            res.send(JSON.parse(data));
+        } else {
+            next();
+        }
+    });
 }
 
-// Function to get data with Redis caching
-async function getDataRedis(id) {
-  const cacheKey = `data:${id}`;
-  let data = await redis.get(cacheKey);
+// Route to get GitHub user data
+app.get('/github/:username', checkCache, async (req, res) => {
+    try {
+        const { username } = req.params;
+        const response = await axios.get(`https://api.github.com/users/${username}`);
+        const data = response.data;
 
-  if (!data) {
-    console.log('Redis Cache miss - fetching from database');
-    data = await getDataById(id);
-    if (!data) {
-      throw new Error('Data not found');
+        // Set data to Redis
+        redisClient.setex(username, 3600, JSON.stringify(data));
+
+        res.send(data);
+    } catch (error) {
+        console.error(error);
+        res.status(500).send('Server Error');
     }
-    // Store data in Redis with an expiration time of 1 hour (3600 seconds)
-    await redis.set(cacheKey, data, 'EX', 3600);
-  } else {
-    console.log('Redis Cache hit');
-  }
-
-  return data;
-}
-
-// Endpoint to add data to the mock database and Redis cache
-app.post('/data/:id', async (req, res) => {
-  const { id } = req.params;
-  const { value } = req.body;
-
-  try {
-    await addData(id, value);
-    await redis.set(`data:${id}`, value, 'EX', 3600); // Cache for 1 hour
-    res.status(201).json({ message: 'Data added successfully' });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
 });
 
-// Endpoint to get data without caching
-app.get('/data/no-cache/:id', async (req, res) => {
-  try {
-    const data = await getDataNoCache(req.params.id);
-    res.json({ data });
-  } catch (error) {
-    res.status(404).json({ error: error.message });
-  }
-});
-
-// Endpoint to get data with Redis caching
-app.get('/data/redis/:id', async (req, res) => {
-  try {
-    const data = await getDataRedis(req.params.id);
-    res.json({ data });
-  } catch (error) {
-    res.status(404).json({ error: error.message });
-  }
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+app.listen(port, () => {
+    console.log(`Server running on port ${port}`);
 });
