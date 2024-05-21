@@ -13,4 +13,14 @@ function getDataById(id) {
   });
 }
 
-module.exports = { getDataById };
+function addData(id, value) {
+  return new Promise((resolve, reject) => {
+    if (data[id]) {
+      return reject(new Error('Data already exists'));
+    }
+    data[id] = value;
+    resolve();
+  });
+}
+
+module.exports = { getDataById, addData };
