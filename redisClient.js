@@ -7,7 +7,8 @@ function createRedisClient() {
     redisInstance = new Redis({
       host: 'db-redis-blr1-55103-do-user-13729304-0.c.db.ondigitalocean.com',
       port: 25061,
-      password: 'AVNS_3Sj9qjkIRWdTG_4UIph'
+      password: 'AVNS_3Sj9qjkIRWdTG_4UIph',
+      retryStrategy: null
     });
 
     redisInstance.on('connect', () => {
