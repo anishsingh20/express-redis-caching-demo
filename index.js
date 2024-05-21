@@ -1,6 +1,6 @@
 const express = require('express');
 const Redis = require('ioredis');
-const { getDataById } = require('./database');
+const { getDataById, addData } = require('./database');
 
 const app = express();
 const redis = new Redis({
@@ -52,6 +52,21 @@ async function getDataRedis(id) {
   return data;
 }
 
+// Endpoint to add data to the mock database and Redis cache
+app.post('/data/:id', async (req, res) => {
+  const { id } = req.params;
+  const { value } = req.body;
+
+  try {
+    await addData(id, value);
+    await redis.set(`data:${id}`, value, 'EX', 3600); // Cache for 1 hour
+    res.status(201).json({ message: 'Data added successfully' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Endpoint to get data without caching
 app.get('/data/no-cache/:id', async (req, res) => {
   try {
     const data = await getDataNoCache(req.params.id);
@@ -61,6 +76,7 @@ app.get('/data/no-cache/:id', async (req, res) => {
   }
 });
 
+// Endpoint to get data with Redis caching
 app.get('/data/redis/:id', async (req, res) => {
   try {
     const data = await getDataRedis(req.params.id);
@@ -70,7 +86,7 @@ app.get('/data/redis/:id', async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 8888;
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
