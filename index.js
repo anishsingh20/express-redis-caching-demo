@@ -1,39 +1,85 @@
-// app.js
 const express = require('express');
+const createRedisClient = require('./redisClient');
+const { getDataById, addData } = require('./database');
+
 const app = express();
-const getRedisClient = require('./redisClient');
-const client = getRedisClient();
+app.use(express.json());
 
-// Endpoint without caching
-app.get('/data', (req, res) => {
-  const data = fetchDataFromDB();
-  res.json(data);
-});
+const redis = createRedisClient();
 
-// Endpoint with Redis caching
-app.get('/cached-data', (req, res) => {
-  const key = req.originalUrl;
-  client.get(key, (err, data) => {
-    if (err) throw err;
-    if (data !== null) {
-      res.send(JSON.parse(data));
-    } else {
-      const data = fetchCachedDataFromDB();
-      client.set(key, JSON.stringify(data), 'EX', 3600);
-      res.json(data);
+// Function to get data without caching
+async function getDataNoCache(id) {
+  const data = await getDataById(id);
+  if (!data) {
+    throw new Error('Data not found');
+  }
+  return data;
+}
+
+// Function to get data with Redis caching
+async function getDataRedis(id) {
+  const cacheKey = `data:${id}`;
+  let data;
+
+  try {
+    data = await redis.get(cacheKey);
+  } catch (err) {
+    console.error('Redis get error:', err);
+  }
+
+  if (!data) {
+    console.log('Redis Cache miss - fetching from database');
+    data = await getDataById(id);
+    if (!data) {
+      throw new Error('Data not found');
     }
-  });
+    try {
+      await redis.set(cacheKey, data, 'EX', 3600); // Cache for 1 hour
+    } catch (err) {
+      console.error('Redis set error:', err);
+    }
+  } else {
+    console.log('Redis Cache hit');
+  }
+
+  return data;
+}
+
+// Endpoint to add data to the mock database and Redis cache
+app.post('/data/:id', async (req, res) => {
+  const { id } = req.params;
+  const { value } = req.body;
+
+  try {
+    await addData(id, value);
+    await redis.set(`data:${id}`, value, 'EX', 3600); // Cache for 1 hour
+    res.status(201).json({ message: 'Data added successfully' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
-// Simulate database calls
-const fetchDataFromDB = () => {
-  return { data: 'This is data from the DB' };
-};
+// Endpoint to get data without caching
+app.get('/data/no-cache/:id', async (req, res) => {
+  try {
+    const data = await getDataNoCache(req.params.id);
+    res.json({ data });
+  } catch (error) {
+    res.status(404).json({ error: error.message });
+  }
+});
 
-const fetchCachedDataFromDB = () => {
-  return { data: 'This is Cached data from the DB' };
-};
+// Endpoint to get data with Redis caching
+app.get('/data/redis/:id', async (req, res) => {
+  try {
+    const data = await getDataRedis(req.params.id);
+    res.json({ data });
+  } catch (error) {
+    res.status(404).json({ error: error.message });
+  }
+});
 
-app.listen(process.env.PORT || 3000, () => {
-  console.log(`Server is running on port ${process.env.PORT || 3000}`);
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
 });
